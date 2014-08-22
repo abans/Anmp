@@ -1,2 +1,0 @@
-node Aweb.js
-PAUSE
