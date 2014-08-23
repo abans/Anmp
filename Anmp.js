@@ -12,10 +12,11 @@ Agl.regexp = {
 	"tel":/([0-9]{3,4}-[0-9]{7,8})/g,
 	"domain":/([a-zA-Z0-9_-]+\.)+([a-zA-Z0-9_-]+)/g,
 	"ip":/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/g
-}
+};
+Agl.pname={nginx:'nginx.exe',php:'php-cgi.exe',memcache:'memcached.exe',mysql:'mysqld.exe',redis:'redis-server.exe',mongodb:'mongod.exe'};
 global.Ahs = {};
 global.Aconfig = Aini.parse(fs.readFileSync(Agl.inipath, 'utf-8'));//Anmp配置文件
-global.Acsd = {nginx:1,php:1,memcache:1,mysql:1};//进程状态
+global.Acsd = {nginx:1,php:1,memcache:1,mysql:1,redis:1,mongodb:1};//进程状态
 var Aglm={host:"127.0.0.1",ports:{},cgitimeout:120,status:2};
 if(!Aconfig.anmp){Aconfig.anmp={};}
 if(!Aconfig.anmp.http){Aconfig.anmp.http=8093;}
@@ -30,9 +31,16 @@ global.Acon = require('./Acon');
 global.Alang = require('./Alang');
 global.gbk_dict = require('gbk-dict').init();
 io.set('log level',1);
+/*
+Acon.runexe('taskkill',['/f','/im','AsusTPHelper.exe'],{},function(){
+	Acon.daemon('AsusTPCenter','C:/Program Files (x86)/ASUS/ASUS Smart Gesture/AsTPCenter/x64/AsusTPCenter.exe'
+	,[],{cwd: 'C:/Program Files (x86)/ASUS/ASUS Smart Gesture/AsTPCenter/x64/',env: null});
+});*/
 Acon.socket(io);
+
 //创建服务
 start_server();
+
 function start_server(){
 	var server = http.createServer(function(req, res) {
 		var urls = url.parse(req.url);

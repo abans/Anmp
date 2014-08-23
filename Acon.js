@@ -191,6 +191,7 @@ io.sockets.on('connection', function (socket) {
 		if(rs.status==1){
 			Agl.client[socket.id].login=true;
 			Acon.sysinfo(socket,2);
+			Acon.wmics(socket.id);
 			Acon.plist(function(data){Agl.plist = data;});
 			socket.emit('status',Acsd);
 			var dirs = fs.readdirSync(Agl.rootpath+'config/nginx/host/');
@@ -280,7 +281,7 @@ Acon.config.prototype.get = function(){
 		var obj = Aini.parse(fs.readFileSync(Agl.rootpath+'config/php'+Aconfig.php.version+'.ini', 'utf-8'));
 		this.send(obj);
 	}else if(this.name=='mysql'){
-		var obj = Aini.parse(fs.readFileSync(Agl.rootpath+'config/mysql/my.ini', 'utf-8'));
+		var obj = Aini.parse(fs.readFileSync(Agl.rootpath+Aconfig.mysql.ini, 'utf-8'));
 		this.send(obj);
 	}else if(this.name=='user'){
 		this.send(Auser.data());
@@ -296,7 +297,7 @@ Acon.config.prototype.get = function(){
 	return;
 }
 Acon.config.prototype.save = function(obj){
-	var mysqlpath = Agl.rootpath+'config/mysql/my.ini';
+	var mysqlpath = Agl.rootpath+Aconfig.mysql.ini;
 	if(this.name=='Anmp'){
 		if(Acon.vip.is()!=1){
 			var pi=0;
@@ -316,7 +317,7 @@ Acon.config.prototype.save = function(obj){
 		mbj.mysqld.datadir = Agl.rootpath+'data/mysql';
 		fs.writeFileSync(mysqlpath,Aini.stringify(mbj)+"skip-name-resolve\n");
 	}else if(this.name=='php'){
-		var myini = new Acon.ini(Agl.rootpath+'config/mysql/my.ini');
+		var myini = new Acon.ini(Agl.rootpath+Aconfig.mysql.ini);
 		//myini.saves(obj);
 	}else if(this.name=='mysql'){
 		fs.writeFileSync(mysqlpath,Aini.stringify(obj)+"skip-name-resolve\n");
@@ -386,6 +387,9 @@ Acon.ready = function(){
 		if(data['afpm.exe']){
 			Acon.runexe('taskkill',['/f','/im','afpm.exe']);
 		}
+		if(data['redis-server.exe'] && data['redis-server.exe'][0].pid>0){
+			Acsd.redis = 4;
+		}
 		if(data['memcached.exe'] && data['memcached.exe'][0].pid>0){
 			Acsd.memcache = 4;
 		}
@@ -409,11 +413,9 @@ Acon.ready = function(){
 	});
 }
 Acon.readystart = function(){
-	if(Aconfig.autostart.memcache==4) Acon.start('memcache');
-	if(Aconfig.autostart.mysql==4) Acon.start('mysql');
-	if(Aconfig.autostart.php==4) Acon.start('php');
-	if(Aconfig.autostart.nginx==4) Acon.start('nginx');
-	//Acon.start('afpm');
+	for (var i in Aconfig.autostart) {
+		if(Aconfig.autostart[i]==4) Acon.start(i);
+	};
 }
 Acon.osinfo = function(){
 	var obj = {};
@@ -459,12 +461,15 @@ Acon.stop = function(name,callback,sid){
 		Acon.runexe('net',['stop','amysql'],{},callback,1,sid);
 	}else if(name=='mongodb'){
 		Acon.runexe('net',['stop','Amongodb'],{},callback,1,sid);
+	}else if(name=='redis'){
+		Acon.runexe('taskkill',['/f','/im','redis-server.exe'],{},callback,1,sid);
 	}else if(name=='memcache'){
 		Acon.runexe('taskkill',['/f','/im','memcached.exe'],{},callback,1,sid);
 		//Acon.runexe('net',['stop','"memcached Server"'],{},callback,1,sid);
 	}else if(name=='all'){
 		Acon.stop('nginx',0,sid);
 		Acon.stop('php',0,sid);
+		Acon.stop('redis',0,sid);
 		Acon.stop('memcache',0,sid);
 		Acon.stop('mysql',0,sid);
 	}
@@ -504,9 +509,9 @@ Acon.nginx_log = function(){
 }
 Acon.install = function(name,sid){
 	if(name=='mysql'){
-		Acon.runexe(Agl.rootpath+'server/mysql'+Aconfig.mysql.version+'/bin/mysqld.exe',['--install','amysql','--defaults-file='+Agl.rootpath+"config/mysql/my.ini"],{},0,1,sid);
+		Acon.runexe(Agl.rootpath+'server/mysql'+Aconfig.mysql.version+'/bin/mysqld.exe',['--install','amysql','--defaults-file='+Agl.rootpath+Aconfig.mysql.ini],{},0,1,sid);
 	}else if(name=='mongodb'){
-		Acon.runexe(Agl.rootpath+'server/mongodb/mongod.exe',['--install','--serviceName','Amongodb','--serviceDisplayName','Amongodb','-f',Agl.rootpath+'config/mongodb.conf'],{},0,1,sid);
+		Acon.runexe(Agl.rootpath+'server/mongodb/mongod.exe',['--install','--serviceName','Amongodb','--serviceDisplayName','Amongodb','-f',Agl.rootpath+'config/mongodb.conf','--rest'],{},0,1,sid);
 	}
 	return;
 }
@@ -522,6 +527,7 @@ Acon.restart = function(name,sid){
 	if(name=='all'){
 		Acon.restart('mysql',sid);
 		Acon.restart('php',sid);
+		Acon.restart('redis',sid);
 		Acon.restart('memcache',sid);
 		Acon.restart('nginx',sid);
 	}else{
@@ -564,11 +570,14 @@ Acon.start = function(name,sid){
 		Acon.runexe('net',['start','amysql'],op,0,1,sid);
 	}else if(name=='mongodb'){
 		Acon.runexe('net',['start','Amongodb'],op,0,1,sid);
+	}else if(name=='redis'){
+		Acon.daemon(name,Agl.rootpath+'server/redis/'+(Aconfig.redis.bit?Aconfig.redis.bit:'32')+'bit/redis-server.exe',[Agl.rootpath+Aconfig.redis.conf],op);
 	}else if(name=='memcache'){
 		var arg = [];
 		for(var c in Aconfig.memcache){arg.push('-'+c);arg.push(Aconfig.memcache[c]);}
 		Acon.daemon(name,Agl.rootpath+'server/memcached/memcached.exe',arg,op);
 	}else if(name=='all'){
+		Acon.start('redis',sid);
 		Acon.start('memcache',sid);
 		Acon.start('mysql',sid);
 		Acon.start('php',sid);
@@ -587,11 +596,11 @@ Acon.broadcast = function(type,obj){
 var infoi = 0;
 Acon.sysinfo = function(socket,type){
 	if(infoi>10){infoi=0;}
-	if(infoi==5){Acon.plist(function(data){Agl.plist = data;});}
+//if(infoi==5){Acon.plist(function(data){Agl.plist = data;});}
 	if(!type) type=1;
 	if(!Agl.client[socket.id] || Agl.client[socket.id].login==false){return;}
 	var obj = Acon.osinfo();
-	if(Agl.plist){obj.plist = Agl.plist;delete Agl.plist;}
+//if(Agl.plist){obj.plist = Agl.plist;delete Agl.plist;}
 	if(type==2){
 		obj.info = {hostname:os.hostname(),type:os.type(),release:os.release(),arch:os.arch(),platform:os.platform()}
 	}
@@ -688,4 +697,48 @@ Acon.runexe = function(cmd,arg,op,exitback,type,sid){
 	}
 	return sp;
 }
+Acon.wmics=function(sid){
+	Acan.wmic(sid);
+	return;
+	for (var i in Agl.pname) {
+		Acan.wmic(Agl.pname[i],sid);
+	};
+}
+Acan.wmic=function(sid){
+	var sname={};
+	for(var i in Agl.pname) sname[Agl.pname[i]]=i;
+	if(!Agl.client[sid] || Agl.client[sid].login==false){return;}
+	var task = Acon.runexe('wmic',['process','get','name,workingsetsize,PageFileUsage/value'],{},0,2);//,'where','name="'+name+'"',processid
+	var out = ''
+	task.stdout.on('data', function (data) {
+		out += data;
+	});
+	task.stdout.on('close', function (data) {
+		var trr = out.replace(/\r/g,'').split('\n');
+		var list = {};
+		var obj={};
+		for (var i=0; i < trr.length; i++) {
+			if(trr[i].indexOf('=')!=-1){
+				var prr=trr[i].split('=');
+				prr[0]=Acan.trim(prr[0]);
+				prr[1]=Acan.trim(prr[1]);
+				if(prr[0].length==0 || prr[1].length==0) continue;
+				if(prr[0]=='Name'){
+					if(!list[prr[1]] && sname[prr[1]]) list[prr[1]] = Array();
+					if(obj.Name){
+						if(sname[obj.Name]) list[obj.Name].push(obj);
+						obj={};
+					}
+				}
+				obj[prr[0]]=prr[1];
+			}
+		};
+		if(Asocket[sid]){
+			Asocket[sid].emit('wmic',list);
+		}
+	});
+	setTimeout(function(){Acan.wmic(sid);}, 1000*5);
+	return;
+}
+
 Acon.ready();

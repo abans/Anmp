@@ -7,6 +7,10 @@ Acan.regexp = {
 	"phone":/1(3|5|8)[0-9]{9}/g,
 	"tel":/([0-9]{3,4}-[0-9]{7,8})/g
 };
+Acan.trim = function(str){
+	if(typeof(str)!='string') return str;
+	return str.replace(/(^\s*)|(\s*$)/g, "");
+}
 Acan.count = function(obj){
 	var i = 0;
 	if(typeof(obj)=='object' || typeof(obj)=='Array')
